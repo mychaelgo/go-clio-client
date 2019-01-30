@@ -68,3 +68,17 @@ func (c *Matter) GetDocument(documentId string) (DocumentResponse, error) {
 	err := c.client.request("GET", endpoint, nil, res)
 	return *res, err
 }
+
+type DocumentTemplateResponse struct {
+	Value     string `json:"value"`
+	Name      string `json:"name"`
+	Extension string `json:"extension"`
+}
+
+func (c *Matter) GetDocumentTemplate(matterId string, clientId string) ([]DocumentTemplateResponse, error) {
+	res := new([]DocumentTemplateResponse)
+	endpoint := fmt.Sprintf("export_matter_ddps/new?matter_id=" + matterId + "&client_id=" + clientId + "&dt_table_id=")
+
+	err := c.client.request("GET", endpoint, nil, res)
+	return *res, err
+}
