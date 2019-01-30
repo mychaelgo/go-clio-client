@@ -2,6 +2,7 @@ package goclio
 
 import (
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"lawatyourside/go-clio-client/goclio/datamodels"
 	"net/url"
 )
@@ -75,10 +76,36 @@ type DocumentTemplateResponse struct {
 	Extension string `json:"extension"`
 }
 
-func (c *Matter) GetDocumentTemplate(matterId string, clientId string) ([]DocumentTemplateResponse, error) {
-	res := new([]DocumentTemplateResponse)
+type DocumentTemplateResponseMap map[string]DocumentTemplateResponse
+
+func (c *Matter) GetDocumentTemplate(matterId string, clientId string) ([]DocumentTemplateResponse, DocumentTemplateResponseMap, error) {
+	var res []DocumentTemplateResponse
 	endpoint := fmt.Sprintf("export_matter_ddps/new?matter_id=" + matterId + "&client_id=" + clientId + "&dt_table_id=")
 
-	err := c.client.request("GET", endpoint, nil, res)
-	return *res, err
+	body, err := c.client.scrapper(endpoint)
+	defer (*body).Close()
+
+	// Load the HTML document
+	doc, err := goquery.NewDocumentFromReader(*body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Find doc template
+	mapResponse := DocumentTemplateResponseMap{}
+	doc.Find("select option").Each(func(i int, s *goquery.Selection) {
+		// For each item found, get the value
+		data := DocumentTemplateResponse{
+			Name:      s.First().AttrOr("data-basename", ""),
+			Extension: s.First().AttrOr("data-extname", ""),
+			Value:     s.First().AttrOr("value", ""),
+		}
+		// add to array
+		res = append(res, data)
+
+		// assign to map, for fast searching
+		mapResponse[data.Name] = data
+	})
+
+	return res, mapResponse, err
 }

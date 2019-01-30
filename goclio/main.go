@@ -57,7 +57,7 @@ type Client struct {
 
 func NewClient() *Client {
 
-	baseUrl := fmt.Sprintf("%s/", APIUrl)
+	baseUrl := fmt.Sprintf("%s", APIUrl)
 
 	baseURL, _ := url.Parse(baseUrl)
 	client := &Client{
@@ -123,7 +123,7 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 		return ErrUnauthorized
 	}
 
-	// Return error from facebook API
+	// Return error from clio API
 	if resp.StatusCode != http.StatusOK {
 		rb := new(errorResponse)
 
@@ -160,4 +160,38 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 	}
 
 	return err
+}
+
+func (c *Client) scrapper(path string) (*io.ReadCloser, error) {
+	urlStr := path
+
+	rel, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	u := c.baseURL.ResolveReference(rel)
+
+	if c.EnableLog {
+		fmt.Printf("Scrape url %s \n", u.String())
+	}
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Cookie", c.clioCookie)
+
+	resp, err := c.doer.Do(req.WithContext(context.Background()))
+	if err != nil {
+		return nil, err
+	}
+
+	//defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, ErrUnauthorized
+	}
+
+	return &resp.Body, err
 }
