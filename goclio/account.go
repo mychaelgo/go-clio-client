@@ -27,6 +27,6 @@ func (c *Account) Login(email string, password string) (LoginResponse, error) {
 
 	endpoint := fmt.Sprintf("session.json")
 
-	err := c.client.request("POST", endpoint, reqBody, res)
+	err := c.client.requestJSON("POST", endpoint, reqBody, res)
 	return *res, err
 }

@@ -22,6 +22,6 @@ func (c *Common) Search(query string) (SearchResponse, error) {
 
 	endpoint := fmt.Sprintf("api/v4/search.json?%s&%s&%d", fields, query, limit)
 
-	err := c.client.request("GET", endpoint, nil, res)
+	err := c.client.requestJSON("GET", endpoint, nil, res)
 	return *res, err
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"lawatyourside/go-clio-client/goclio/utils"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,7 +16,8 @@ import (
 
 const (
 	libraryVersion = "0.1"
-	userAgent      = "go-clio-client/" + libraryVersion
+	//userAgent      = "go-clio-client/" + libraryVersion
+	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
 )
 
 var (
@@ -49,6 +51,8 @@ type Client struct {
 	EnableLog  bool
 
 	clioCookie string
+	csrfToken  string
+	xsrfToken  string
 
 	Account *Account
 	Common  *Common
@@ -81,7 +85,7 @@ func (c *Client) GetCookie() string {
 	return c.clioCookie
 }
 
-func (c *Client) request(method string, path string, data interface{}, v interface{}) error {
+func (c *Client) requestJSON(method string, path string, data interface{}, v interface{}) error {
 	urlStr := path
 
 	rel, err := url.Parse(urlStr)
@@ -112,6 +116,8 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Cookie", c.clioCookie)
+	req.Header.Set("X-CSRF-Token", c.csrfToken)
+	req.Header.Set("X-XSRF-Token", c.xsrfToken)
 
 	resp, err := c.doer.Do(req.WithContext(context.Background()))
 	if err != nil {
@@ -138,13 +144,24 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 
 	// Decode to interface
 	if path == "session.json" && resp.Body != nil {
+		var cookieMaps []utils.CookieMap
+		cookieMaps = append(cookieMaps, utils.CookieStringToMap(c.clioCookie))
 		for k, v := range resp.Header {
 			for _, s := range v {
 				if k == "Set-Cookie" {
-					c.clioCookie += s + "; "
+					cookieMap := utils.CookieStringToMap(s)
+					cookieMaps = append(cookieMaps, cookieMap)
 				}
 			}
 		}
+		//cookieMaps = append(cookieMaps, utils.CookieStringToMap(c.clioCookie))
+		mergedCookieMap := utils.MergeCookieMap(cookieMaps...)
+		if mergedCookieMap["XSRF-TOKEN"] != "" {
+			c.xsrfToken = mergedCookieMap["XSRF-TOKEN"]
+		}
+		c.clioCookie = utils.CookieMapToString(mergedCookieMap)
+
+		//fmt.Println("requestJSON Cookie ", c.clioCookie)
 	} else if strings.ContainsAny(path, "iris/clio?matter_id=") {
 		loc := resp.Request.URL.String()
 		jsonStruct := fmt.Sprintf(`{"location":"%s"}`, loc)
@@ -160,6 +177,91 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 	}
 
 	return err
+}
+
+func (c *Client) requestFormEncoded(method string, path string, payload url.Values) error {
+	urlStr := path
+
+	rel, err := url.Parse(urlStr)
+	if err != nil {
+		return err
+	}
+	u := c.baseURL.ResolveReference(rel)
+
+	if c.EnableLog {
+		fmt.Printf("Request %s to %s with data: %s \n", method, u.String(), payload)
+	}
+
+	req, err := http.NewRequest(method, u.String(), strings.NewReader(payload.Encode()))
+	if err != nil {
+		return err
+	}
+
+	//fmt.Println("payload ", payload.Encode())
+
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+	//req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	//req.Header.Set("Host", "app.clio.com")
+	req.Header.Set("Origin", "https://app.clio.com")
+	req.Header.Set("Referer", "https://app.clio.com/matters")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Cookie", c.clioCookie)
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("X-CSRF-Token", c.csrfToken)
+	req.Header.Set("X-XSRF-Token", c.xsrfToken)
+	//req.Header.Add("Content-Length", strconv.Itoa(len(payload.Encode())))
+
+	resp, err := c.doer.Do(req.WithContext(context.Background()))
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	responseData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+	}
+	responseString := string(responseData)
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return ErrUnauthorized
+	}
+
+	// Return error from clio API
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("responseString ", responseString)
+		return errors.New(fmt.Sprintf("error %d , ", resp.StatusCode))
+	}
+
+	// set cookie XSRF-TOKEN
+	var cookieMaps []utils.CookieMap
+	cookieMaps = append(cookieMaps, utils.CookieStringToMap(c.clioCookie))
+	for k, v := range resp.Header {
+		for _, s := range v {
+			if k == "Set-Cookie" {
+				cookieMap := utils.CookieStringToMap(s)
+				cookieMaps = append(cookieMaps, cookieMap)
+			}
+		}
+	}
+	//cookieMaps = append(cookieMaps, utils.CookieStringToMap(c.clioCookie))
+	mergedCookieMap := utils.MergeCookieMap(cookieMaps...)
+	if mergedCookieMap["XSRF-TOKEN"] != "" {
+		c.xsrfToken = mergedCookieMap["XSRF-TOKEN"]
+	}
+	c.clioCookie = utils.CookieMapToString(mergedCookieMap)
+
+	//fmt.Println("requestFormEncoded Cookie ", c.clioCookie)
+	//fmt.Println("requestFormEncoded csrfToken ", c.csrfToken)
+
+	return err
+}
+
+func (c *Client) Scrapper(path string) (*io.ReadCloser, error) {
+	return c.scrapper(path)
 }
 
 func (c *Client) scrapper(path string) (*io.ReadCloser, error) {
@@ -180,8 +282,12 @@ func (c *Client) scrapper(path string) (*io.ReadCloser, error) {
 		return nil, err
 	}
 
+	//fmt.Println("scrapper Cookie ", c.clioCookie)
+
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Cookie", c.clioCookie)
+	req.Header.Set("X-CSRF-Token", c.csrfToken)
+	req.Header.Set("X-XSRF-Token", c.xsrfToken)
 
 	resp, err := c.doer.Do(req.WithContext(context.Background()))
 	if err != nil {
@@ -192,6 +298,29 @@ func (c *Client) scrapper(path string) (*io.ReadCloser, error) {
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, ErrUnauthorized
 	}
+
+	//fmt.Println("scrapper Cookie ", c.clioCookie)
+	//fmt.Println("scrapper csrfToken ", c.csrfToken)
+
+	// set cookie XSRF-TOKEN
+	var cookieMaps []utils.CookieMap
+	cookieMaps = append(cookieMaps, utils.CookieStringToMap(c.clioCookie))
+	for k, v := range resp.Header {
+		for _, s := range v {
+			if k == "Set-Cookie" {
+				cookieMap := utils.CookieStringToMap(s)
+				cookieMaps = append(cookieMaps, cookieMap)
+			}
+		}
+	}
+	//cookieMaps = append(cookieMaps, utils.CookieStringToMap(c.clioCookie))
+	mergedCookieMap := utils.MergeCookieMap(cookieMaps...)
+	if mergedCookieMap["XSRF-TOKEN"] != "" {
+		c.xsrfToken = mergedCookieMap["XSRF-TOKEN"]
+	}
+	c.clioCookie = utils.CookieMapToString(mergedCookieMap)
+
+	//fmt.Println("scrapper Cookie ", c.clioCookie)
 
 	return &resp.Body, err
 }
