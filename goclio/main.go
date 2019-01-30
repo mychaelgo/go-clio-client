@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -22,7 +24,7 @@ var (
 
 var (
 	// ErrUnauthorized can be returned on any call on response status code 401.
-	ErrUnauthorized = errors.New("go-facebook-client: unauthorized")
+	ErrUnauthorized = errors.New("go-clio-client: unauthorized")
 )
 
 type errorResponse struct {
@@ -49,6 +51,7 @@ type Client struct {
 	clioCookie string
 
 	Account *Account
+	Common  *Common
 	Matter  *Matter
 }
 
@@ -64,6 +67,8 @@ func NewClient() *Client {
 	}
 
 	client.Account = &Account{client}
+	client.Common = &Common{client}
+	client.Matter = &Matter{client}
 
 	return client
 }
@@ -77,7 +82,7 @@ func (c *Client) GetCookie() string {
 }
 
 func (c *Client) request(method string, path string, data interface{}, v interface{}) error {
-
+	fmt.Println("Test 2")
 	urlStr := path
 
 	rel, err := url.Parse(urlStr)
@@ -107,7 +112,7 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Cookie", c.userAgent)
+	req.Header.Set("Cookie", c.clioCookie)
 
 	resp, err := c.doer.Do(req.WithContext(context.Background()))
 	if err != nil {
@@ -136,11 +141,16 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 	if path == "session.json" && resp.Body != nil {
 		for k, v := range resp.Header {
 			for _, s := range v {
+				fmt.Printf("%s = %s \n", k, s)
 				if k == "Set-Cookie" {
 					c.clioCookie += s
 				}
 			}
 		}
+	} else if strings.ContainsAny(path, "iris/clio?matter_id=") {
+		loc := resp.Request.URL.String()
+		jsonStruct := fmt.Sprintf(`{"location":"%s"}`, loc)
+		resp.Body = ioutil.NopCloser(bytes.NewBufferString(jsonStruct))
 	}
 
 	res := v
