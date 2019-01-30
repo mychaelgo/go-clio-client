@@ -141,7 +141,7 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 		for k, v := range resp.Header {
 			for _, s := range v {
 				if k == "Set-Cookie" {
-					c.clioCookie += s
+					c.clioCookie += s + "; "
 				}
 			}
 		}
