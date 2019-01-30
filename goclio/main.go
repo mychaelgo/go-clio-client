@@ -82,7 +82,6 @@ func (c *Client) GetCookie() string {
 }
 
 func (c *Client) request(method string, path string, data interface{}, v interface{}) error {
-	fmt.Println("Test 2")
 	urlStr := path
 
 	rel, err := url.Parse(urlStr)
@@ -141,7 +140,6 @@ func (c *Client) request(method string, path string, data interface{}, v interfa
 	if path == "session.json" && resp.Body != nil {
 		for k, v := range resp.Header {
 			for _, s := range v {
-				fmt.Printf("%s = %s \n", k, s)
 				if k == "Set-Cookie" {
 					c.clioCookie += s
 				}
