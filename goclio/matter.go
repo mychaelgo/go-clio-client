@@ -12,9 +12,16 @@ type Matter struct {
 	client *Client
 }
 
-// TODO
-func (c *Matter) GetMatter() {
+func (c *Matter) GetMatter(matterId string) (datamodels.Matter, error) {
+	res := new(datamodels.Matter)
 
+	// get matter
+	fields := "id,display_number,custom_number,description,status,location,client_reference,billable,maildrop_address,billing_method,open_date,close_date,pending_date,client{id,name,first_name,last_name,type,initials},practice_area{id,name},shared,contingency_fee{show_contingency_award},responsible_attorney{id,name,first_name,last_name,enabled},originating_attorney{id,name,first_name,last_name,enabled},group{id,name,type},statute_of_limitations{id,due_at,status,reminders},relationships{id,description,contact}"
+
+	endpoint := fmt.Sprintf("api/v4/matters/%s?fields=%s", matterId, fields)
+
+	err := c.client.requestJSON("GET", endpoint, nil, res)
+	return *res, err
 }
 
 type GetLocationResponse struct {
@@ -51,11 +58,14 @@ type DocumentsResponse struct {
 	Parents    []datamodels.Document `json:"parents"`
 }
 
-func (c *Matter) GetDocuments(folderId string) (DocumentsResponse, error) {
+func (c *Matter) GetDocuments(folderId int) (DocumentsResponse, error) {
+	var err error
 	res := new(DocumentsResponse)
-	endpoint := fmt.Sprintf("iris/folders/" + folderId + "/list.json?limit=25")
 
-	err := c.client.requestJSON("GET", endpoint, nil, res)
+	endpoint := fmt.Sprintf("iris/folders/%d/list.json?limit=25", folderId)
+
+	err = c.client.requestJSON("GET", endpoint, nil, res)
+
 	return *res, err
 }
 
@@ -63,9 +73,9 @@ type DocumentResponse struct {
 	Item datamodels.Document `json:"item"`
 }
 
-func (c *Matter) GetDocument(documentId string) (DocumentResponse, error) {
+func (c *Matter) GetDocument(documentId int) (DocumentResponse, error) {
 	res := new(DocumentResponse)
-	endpoint := fmt.Sprintf("iris/items/" + documentId + ".json")
+	endpoint := fmt.Sprintf("iris/items/%d.json", documentId)
 
 	err := c.client.requestJSON("GET", endpoint, nil, res)
 	return *res, err
@@ -79,9 +89,9 @@ type DocumentTemplateResponse struct {
 
 type DocumentTemplateResponseMap map[string]DocumentTemplateResponse
 
-func (c *Matter) GetDocumentTemplate(matterId string, clientId string) ([]DocumentTemplateResponse, DocumentTemplateResponseMap, error) {
+func (c *Matter) GetDocumentTemplate(matterId int, clientId int) ([]DocumentTemplateResponse, DocumentTemplateResponseMap, error) {
 	var res []DocumentTemplateResponse
-	endpoint := fmt.Sprintf("export_matter_ddps/new?matter_id=" + matterId + "&client_id=" + clientId + "&dt_table_id=")
+	endpoint := fmt.Sprintf("export_matter_ddps/new?matter_id=%d&client_id=%d&dt_table_id=", matterId, clientId)
 
 	body, err := c.client.scrapper(endpoint)
 	defer (*body).Close()
@@ -111,8 +121,8 @@ func (c *Matter) GetDocumentTemplate(matterId string, clientId string) ([]Docume
 	return res, mapResponse, err
 }
 
-func (c *Matter) CreateNewTokenForDocTemplate(matterId string, clientId string) (bool, error) {
-	endpoint := fmt.Sprintf("export_matter_ddps/new?matter_id=" + matterId + "&client_id=" + clientId + "&dt_table_id=")
+func (c *Matter) CreateNewTokenForDocTemplate(matterId int, clientId int) (bool, error) {
+	endpoint := fmt.Sprintf("export_matter_ddps/new?matter_id=%d&client_id=%d&dt_table_id=", matterId, clientId)
 
 	_, err := c.client.scrapper(endpoint)
 	if err != nil {
@@ -122,9 +132,9 @@ func (c *Matter) CreateNewTokenForDocTemplate(matterId string, clientId string) 
 	return true, err
 }
 
-func (c *Matter) GetDocumentCsrfToken(folderId string) (string, error) {
+func (c *Matter) GetDocumentCsrfToken(folderId int) (string, error) {
 	var res string
-	endpoint := fmt.Sprintf("iris/#/drive?id=" + folderId + "&parent_offset=2")
+	endpoint := fmt.Sprintf("iris/#/drive?id=%d&parent_offset=2", folderId)
 
 	body, err := c.client.scrapper(endpoint)
 	defer (*body).Close()
@@ -149,7 +159,7 @@ func (c *Matter) GetDocumentCsrfToken(folderId string) (string, error) {
 	return res, err
 }
 
-func (c *Matter) CreateDocumentTemplate(templateId string, clientId string, matterId string, folderId string, documentType constant.ClioDocType, fileName string) (bool, error) {
+func (c *Matter) CreateDocumentTemplate(templateId int, clientId int, matterId int, folderId int, documentType constant.ClioDocType, fileName string) (bool, error) {
 	var err error
 
 	// get current page csrf-token
@@ -180,11 +190,11 @@ func (c *Matter) CreateDocumentTemplate(templateId string, clientId string, matt
 	payload := url.Values{}
 	payload.Set("utf8", fmt.Sprintf("%s", "\u2713")) // ✓
 	payload.Set("dt_table_id", "")
-	payload.Set("export[document_template_id]", templateId)
-	payload.Set("export[client_id]", clientId)
+	payload.Set("export[document_template_id]", string(templateId))
+	payload.Set("export[client_id]", string(clientId))
 	payload.Set("export_matter_id_auto_complete_input", "00856-Soria")
-	payload.Set("export[matter_id]", matterId)
-	payload.Set("export[matter_id]", matterId)
+	payload.Set("export[matter_id]", string(matterId))
+	payload.Set("export[matter_id]", string(matterId))
 	payload.Set("export[export_pdf]", generatePDF)
 	payload.Set("export[export_original]", generateDocx)
 	payload.Set("export[export_basename_original]", fileName)

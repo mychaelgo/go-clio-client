@@ -117,7 +117,7 @@ func (c *Client) requestJSON(method string, path string, data interface{}, v int
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Cookie", c.clioCookie)
 	req.Header.Set("X-CSRF-Token", c.csrfToken)
-	req.Header.Set("X-XSRF-Token", c.xsrfToken)
+	req.Header.Set("X-XSRF-TOKEN", c.xsrfToken)
 
 	resp, err := c.doer.Do(req.WithContext(context.Background()))
 	if err != nil {
@@ -125,6 +125,17 @@ func (c *Client) requestJSON(method string, path string, data interface{}, v int
 	}
 
 	defer resp.Body.Close()
+
+	responseData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	responseString := string(responseData)
+
+	if c.EnableLog {
+		fmt.Printf("Response %s from %s : %s \n", method, u.String(), responseString)
+	}
+
 	if resp.StatusCode == http.StatusUnauthorized {
 		return ErrUnauthorized
 	}
@@ -160,23 +171,26 @@ func (c *Client) requestJSON(method string, path string, data interface{}, v int
 			c.xsrfToken = mergedCookieMap["XSRF-TOKEN"]
 		}
 		c.clioCookie = utils.CookieMapToString(mergedCookieMap)
-
-		//fmt.Println("requestJSON Cookie ", c.clioCookie)
-	} else if strings.ContainsAny(path, "iris/clio?matter_id=") {
+		return nil
+	} else if strings.Contains(path, "iris/clio?matter_id=") {
 		loc := resp.Request.URL.String()
 		jsonStruct := fmt.Sprintf(`{"location":"%s"}`, loc)
 		resp.Body = ioutil.NopCloser(bytes.NewBufferString(jsonStruct))
+		return nil
 	}
 
-	res := v
-	err = json.NewDecoder(resp.Body).Decode(res)
+	//err = json.NewDecoder(resp.Body).Decode(res)
+	_ = json.Unmarshal([]byte(responseString), &v)
 
-	by, _ := json.Marshal(res)
-	if c.EnableLog {
-		fmt.Printf("Response %s from %s : %s \n", method, u.String(), string(by))
-	}
+	//res := v
+	//err = json.NewDecoder(resp.Body).Decode(res)
+	//
+	//by, _ := json.Marshal(res)
+	//if c.EnableLog {
+	//	fmt.Printf("Response %s from %s : %s \n", method, u.String(), string(by))
+	//}
 
-	return err
+	return nil
 }
 
 func (c *Client) requestFormEncoded(method string, path string, payload url.Values) error {
@@ -211,7 +225,7 @@ func (c *Client) requestFormEncoded(method string, path string, payload url.Valu
 	req.Header.Set("Cookie", c.clioCookie)
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("X-CSRF-Token", c.csrfToken)
-	req.Header.Set("X-XSRF-Token", c.xsrfToken)
+	req.Header.Set("X-XSRF-TOKEN", c.xsrfToken)
 	//req.Header.Add("Content-Length", strconv.Itoa(len(payload.Encode())))
 
 	resp, err := c.doer.Do(req.WithContext(context.Background()))
@@ -287,7 +301,7 @@ func (c *Client) scrapper(path string) (*io.ReadCloser, error) {
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Cookie", c.clioCookie)
 	req.Header.Set("X-CSRF-Token", c.csrfToken)
-	req.Header.Set("X-XSRF-Token", c.xsrfToken)
+	req.Header.Set("X-XSRF-TOKEN", c.xsrfToken)
 
 	resp, err := c.doer.Do(req.WithContext(context.Background()))
 	if err != nil {
