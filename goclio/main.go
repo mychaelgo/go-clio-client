@@ -176,6 +176,13 @@ func (c *Client) requestJSON(method string, path string, data interface{}, v int
 		loc := resp.Request.URL.String()
 		jsonStruct := fmt.Sprintf(`{"location":"%s"}`, loc)
 		resp.Body = ioutil.NopCloser(bytes.NewBufferString(jsonStruct))
+		res := v
+		err = json.NewDecoder(resp.Body).Decode(res)
+
+		by, _ := json.Marshal(res)
+		if c.EnableLog {
+			fmt.Printf("Response %s from %s : %s \n", method, u.String(), string(by))
+		}
 		return nil
 	}
 

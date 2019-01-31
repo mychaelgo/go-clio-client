@@ -198,11 +198,10 @@ func (c *Matter) CreateDocumentTemplate(templateId int, clientId int, matterId i
 	payload := url.Values{}
 	payload.Set("utf8", fmt.Sprintf("%s", "\u2713")) // ✓
 	payload.Set("dt_table_id", "")
-	payload.Set("export[document_template_id]", string(templateId))
-	payload.Set("export[client_id]", string(clientId))
-	payload.Set("export_matter_id_auto_complete_input", "00856-Soria")
-	payload.Set("export[matter_id]", string(matterId))
-	payload.Set("export[matter_id]", string(matterId))
+	payload.Set("export[document_template_id]", strconv.Itoa(templateId))
+	payload.Set("export[client_id]", strconv.Itoa(clientId))
+	payload.Set("export_matter_id_auto_complete_input", "")
+	payload.Set("export[matter_id]", strconv.Itoa(matterId))
 	payload.Set("export[export_pdf]", generatePDF)
 	payload.Set("export[export_original]", generateDocx)
 	payload.Set("export[export_basename_original]", fileName)
