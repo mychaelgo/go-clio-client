@@ -6,19 +6,26 @@ import (
 	"lawatyourside/go-clio-client/goclio/constant"
 	"lawatyourside/go-clio-client/goclio/datamodels"
 	"net/url"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type Matter struct {
 	client *Client
 }
 
-func (c *Matter) GetMatter(matterId string) (datamodels.Matter, error) {
-	res := new(datamodels.Matter)
+type MatterResponse struct {
+	Data datamodels.Matter `json:"data"`
+}
+
+func (c *Matter) GetMatter(matterId int) (MatterResponse, error) {
+	res := new(MatterResponse)
 
 	// get matter
-	fields := "id,display_number,custom_number,description,status,location,client_reference,billable,maildrop_address,billing_method,open_date,close_date,pending_date,client{id,name,first_name,last_name,type,initials},practice_area{id,name},shared,contingency_fee{show_contingency_award},responsible_attorney{id,name,first_name,last_name,enabled},originating_attorney{id,name,first_name,last_name,enabled},group{id,name,type},statute_of_limitations{id,due_at,status,reminders},relationships{id,description,contact}"
-
-	endpoint := fmt.Sprintf("api/v4/matters/%s?fields=%s", matterId, fields)
+	qs, _ := url.ParseQuery("")
+	qs.Add("fields", "id,display_number,custom_number,description,status,location,client_reference,billable,maildrop_address,billing_method,open_date,close_date,pending_date,client{id,name,first_name,last_name,type,initials},practice_area{id,name},shared,contingency_fee{show_contingency_award},responsible_attorney{id,name,first_name,last_name,enabled},originating_attorney{id,name,first_name,last_name,enabled},group{id,name,type},statute_of_limitations{id,due_at,status,reminders},relationships{id,description,contact}")
+	endpoint := fmt.Sprintf("api/v4/matters/%d?%s", matterId, qs.Encode())
 
 	err := c.client.requestJSON("GET", endpoint, nil, res)
 	return *res, err
@@ -29,10 +36,10 @@ type GetLocationResponse struct {
 }
 
 // returned folderId
-func (c *Matter) GetLocationDocuments(matterId int) (string, error) {
+func (c *Matter) GetLocationDocuments(matterId int) (int, error) {
 	res := new(GetLocationResponse)
 
-	folderId := ""
+	folderId := 0
 
 	endpoint := fmt.Sprintf("iris/clio?matter_id=%d", matterId)
 	err := c.client.requestJSON("GET", endpoint, nil, res)
@@ -47,7 +54,8 @@ func (c *Matter) GetLocationDocuments(matterId int) (string, error) {
 
 	m, _ := url.ParseQuery(u.Path + u.Fragment)
 
-	folderId = m.Get("/iris//drive/?id")
+	folderIdInt := m.Get("/iris//drive/?id")
+	folderId, _ = strconv.Atoi(folderIdInt)
 
 	return folderId, err
 }
@@ -159,18 +167,18 @@ func (c *Matter) GetDocumentCsrfToken(folderId int) (string, error) {
 	return res, err
 }
 
-func (c *Matter) CreateDocumentTemplate(templateId int, clientId int, matterId int, folderId int, documentType constant.ClioDocType, fileName string) (bool, error) {
-	var err error
+func (c *Matter) CreateDocumentTemplate(templateId int, clientId int, matterId int, folderId int, documentType constant.ClioDocType, fileName string) (success bool, documentId int, err error) {
+	documentId = 0
 
 	// get current page csrf-token
 	_, err = c.GetDocumentCsrfToken(folderId)
 	if err != nil {
-		return false, err
+		return false, documentId, err
 	}
 
 	_, err = c.CreateNewTokenForDocTemplate(matterId, clientId)
 	if err != nil {
-		return false, err
+		return false, documentId, err
 	}
 
 	endpoint := fmt.Sprintf("export_matter_ddps")
@@ -202,8 +210,31 @@ func (c *Matter) CreateDocumentTemplate(templateId int, clientId int, matterId i
 
 	err = c.client.requestFormEncoded("POST", endpoint, payload)
 	if err != nil {
-		return false, err
+		return false, documentId, err
 	}
 
-	return true, nil
+	// get newly created document id
+	documentId, _ = c.GetNewlyCreatedDocumentId(folderId, fileName)
+
+	return true, documentId, nil
+}
+
+func (c *Matter) GetNewlyCreatedDocumentId(folderId int, fileName string) (documentId int, err error) {
+	docs, err := c.GetDocuments(folderId)
+	now := time.Now().UTC()
+	for _, v := range docs.Children {
+		if strings.Contains(v.Name, fileName) {
+			diff := now.Sub(v.CreatedAt.UTC())
+			if diff.Minutes() <= constant.ClioMaxWaitMinutesForDocument {
+				documentId = v.Id
+				break
+			}
+		}
+	}
+
+	if documentId == 0 {
+		return c.GetNewlyCreatedDocumentId(folderId, fileName)
+	}
+
+	return documentId, nil
 }
